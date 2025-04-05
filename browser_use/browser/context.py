@@ -528,8 +528,11 @@ class BrowserContext:
 			# Wait for idle time
 			start_time = asyncio.get_event_loop().time()
 			while True:
+				# break
 				await asyncio.sleep(0.1)
 				now = asyncio.get_event_loop().time()
+				# logger.info(f"[!_!] {len(pending_requests)}, {now}, {last_activity}, {self.config.wait_for_network_idle_page_load_time}")
+				# time.sleep(0.005)
 				if len(pending_requests) == 0 and (now - last_activity) >= self.config.wait_for_network_idle_page_load_time:
 					break
 				if now - start_time > self.config.maximum_wait_page_load_time:
@@ -573,6 +576,7 @@ class BrowserContext:
 		remaining = max((timeout_overwrite or self.config.minimum_wait_page_load_time) - elapsed, 0)
 
 		logger.debug(f'--Page loaded in {elapsed:.2f} seconds, waiting for additional {remaining:.2f} seconds')
+		# logger.info(f'(-o-) -- Page loaded in {elapsed:.2f} seconds, waiting for additional {remaining:.2f} seconds')
 
 		# Sleep remaining time if needed
 		if remaining > 0:
@@ -743,9 +747,17 @@ class BrowserContext:
 	@time_execution_sync('--get_state')  # This decorator might need to be updated to handle async
 	async def get_state(self) -> BrowserState:
 		"""Get the current state of the browser"""
+
+		import time
+		start = time.time()
 		await self._wait_for_page_and_frames_load()
+		logger.info(f"(-o-) [observe] [_wait_for_page_and_frames_load] {time.time()-start}")
+		start = time.time()
 		session = await self.get_session()
+		logger.info(f"(-o-) [observe] [get_session] {time.time()-start}")
+		start = time.time()
 		session.cached_state = await self._update_state()
+		logger.info(f"(-o-) [observe] [_update_state] {time.time()-start}")
 
 		# Save cookies if a file is specified
 		if self.config.cookies_file:
@@ -755,6 +767,10 @@ class BrowserContext:
 
 	async def _update_state(self, focus_element: int = -1) -> BrowserState:
 		"""Update and return state."""
+
+		import time
+
+		start = time.time()
 		session = await self.get_session()
 
 		# Check if current page is still valid, if not switch to another available page
@@ -773,6 +789,9 @@ class BrowserContext:
 			else:
 				raise BrowserError('Browser closed: no valid pages available')
 
+		logger.info(f"(-o-) [observe] [_update_state] [is_valid] {time.time()-start}")
+		start = time.time()
+
 		try:
 			await self.remove_highlights()
 			dom_service = DomService(page)
@@ -782,8 +801,13 @@ class BrowserContext:
 				highlight_elements=self.config.highlight_elements,
 			)
 
+			logger.info(f"(-o-) [observe] [_update_state] [get_clickable_elements] {time.time()-start}")
+			start = time.time()
+
 			screenshot_b64 = await self.take_screenshot()
 			pixels_above, pixels_below = await self.get_scroll_info(page)
+			logger.info(f"(-o-) [observe] [_update_state] [screenshot and scroll info] {time.time()-start}")
+
 
 			self.current_state = BrowserState(
 				element_tree=content.element_tree,
@@ -819,6 +843,10 @@ class BrowserContext:
 			full_page=full_page,
 			animations='disabled',
 		)
+
+		from datetime import datetime
+		with open(f"/Users/sunhuanchen/Desktop/web-agent-explore/screenshot_{datetime.now().strftime("%Y%m%d_%H%M%S")}.png", "wb") as f:
+			f.write(screenshot)
 
 		screenshot_b64 = base64.b64encode(screenshot).decode('utf-8')
 

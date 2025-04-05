@@ -94,7 +94,7 @@ class Agent(Generic[Context]):
 		register_done_callback: Callable[['AgentHistoryList'], Awaitable[None]] | None = None,
 		register_external_agent_status_raise_error_callback: Callable[[], Awaitable[bool]] | None = None,
 		# Agent settings
-		use_vision: bool = True,
+		use_vision: bool = False,
 		use_vision_for_planner: bool = False,
 		save_conversation_path: Optional[str] = None,
 		save_conversation_path_encoding: Optional[str] = 'utf-8',
@@ -324,15 +324,25 @@ class Agent(Generic[Context]):
 	@time_execution_async('--step (agent)')
 	async def step(self, step_info: Optional[AgentStepInfo] = None) -> None:
 		"""Execute one step of the task"""
+
+		import time
+
+		step_start_time = time.time()
+		
 		logger.info(f'📍 Step {self.state.n_steps}')
 		state = None
 		model_output = None
 		result: list[ActionResult] = []
 		step_start_time = time.time()
 		tokens = 0
-
 		try:
+			start = time.time()
 			state = await self.browser_context.get_state()
+			logger.info(f"(-o-) [observe] {time.time()-start}")
+			
+			from datetime import datetime
+			with open(f"/Users/sunhuanchen/Desktop/web-agent-explore/browser-use-step-{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt", "w") as f:
+				f.write(str(state))
 
 			await self._raise_if_stopped_or_paused()
 
@@ -358,7 +368,9 @@ class Agent(Generic[Context]):
 			tokens = self._message_manager.state.history.current_tokens
 
 			try:
+				start = time.time()
 				model_output = await self.get_next_action(input_messages)
+				logger.info(f"(-o-) [inference] {time.time()-start}")
 
 				self.state.n_steps += 1
 
@@ -379,7 +391,9 @@ class Agent(Generic[Context]):
 				self._message_manager._remove_last_state_message()
 				raise e
 
+			start = time.time()
 			result: list[ActionResult] = await self.multi_act(model_output.action)
+			logger.info(f"(-o-) [multi_act] {time.time()-start}")
 
 			self.state.last_result = result
 
@@ -387,6 +401,8 @@ class Agent(Generic[Context]):
 				logger.info(f'📄 Result: {result[-1].extracted_content}')
 
 			self.state.consecutive_failures = 0
+
+			logger.info(f"(-o-) [] {time.time()-step_start_time}")
 
 		except InterruptedError:
 			logger.debug('Agent paused')
@@ -508,6 +524,11 @@ class Agent(Generic[Context]):
 		"""Get next action from LLM based on current state"""
 		input_messages = self._convert_input_messages(input_messages)
 
+		from datetime import datetime
+		import time
+		with open(f"/Users/sunhuanchen/Desktop/web-agent-explore/bu-input_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt", "w") as f:
+			f.write(str(input_messages))
+
 		if self.tool_calling_method == 'raw':
 			output = self.llm.invoke(input_messages)
 			# TODO: currently invoke does not return reasoning_content, we should override invoke
@@ -527,6 +548,7 @@ class Agent(Generic[Context]):
 			structured_llm = self.llm.with_structured_output(self.AgentOutput, include_raw=True, method=self.tool_calling_method)
 			response: dict[str, Any] = await structured_llm.ainvoke(input_messages)  # type: ignore
 			parsed: AgentOutput | None = response['parsed']
+
 
 		if parsed is None:
 			raise ValueError('Could not parse response.')
@@ -654,14 +676,20 @@ class Agent(Generic[Context]):
 		check_for_new_elements: bool = True,
 	) -> list[ActionResult]:
 		"""Execute multiple actions"""
+		import time
+
+		start = time.time()
 		results = []
 
 		cached_selector_map = await self.browser_context.get_selector_map()
 		cached_path_hashes = set(e.hash.branch_path_hash for e in cached_selector_map.values())
 
 		await self.browser_context.remove_highlights()
+		logger.info(f"(-o-) [multi_act] [get_selector_map and remove_highlights] {time.time()-start}")
 
 		for i, action in enumerate(actions):
+
+			start = time.time()
 			if action.get_index() is not None and i != 0:
 				new_state = await self.browser_context.get_state()
 				new_path_hashes = set(e.hash.branch_path_hash for e in new_state.selector_map.values())
@@ -691,7 +719,7 @@ class Agent(Generic[Context]):
 
 			await asyncio.sleep(self.browser_context.config.wait_between_actions)
 			# hash all elements. if it is a subset of cached_state its fine - else break (new elements on page)
-
+			logger.info(f"(-o-) [multi_act] [act {i}:({action})] {time.time()-start}")
 		return results
 
 	async def _validate_output(self) -> bool:
@@ -943,7 +971,11 @@ class Agent(Generic[Context]):
 		planner_messages = convert_input_messages(planner_messages, self.planner_model_name)
 
 		# Get planner output
+		import time
+		logger.info(f"(-o-)   [planner] input message {planner_messages}")
+		start = time
 		response = await self.settings.planner_llm.ainvoke(planner_messages)
+		logger.info(f"(-o-) [planner][LLM] {time.time()-start}")
 		plan = str(response.content)
 		# if deepseek-reasoner, remove think tags
 		if self.planner_model_name and ('deepseek-r1' in self.planner_model_name or 'deepseek-reasoner' in self.planner_model_name):

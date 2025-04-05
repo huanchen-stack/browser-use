@@ -41,7 +41,10 @@ class DomService:
 		focus_element: int = -1,
 		viewport_expansion: int = 0,
 	) -> DOMState:
+		import time
+		start = time.time()
 		element_tree, selector_map = await self._build_dom_tree(highlight_elements, focus_element, viewport_expansion)
+		logger.info(f"  (-o-) build dom tree {time.time()-start}")
 		return DOMState(element_tree=element_tree, selector_map=selector_map)
 
 	@time_execution_async('--build_dom_tree')

@@ -149,7 +149,7 @@ Your role is to:
 4. Suggest the next high-level steps to take
 
 Inside your messages, there will be AI messages from different agents with different formats.
-
+›
 Your output format should be always a JSON object with the following fields:
 {
     "state_analysis": "Brief analysis of the current state and what has been done so far",
